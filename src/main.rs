@@ -8,6 +8,9 @@ use std::time::Instant;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+extern crate byte_unit;
+use byte_unit::{Byte};
+
 #[macro_use] extern crate log;
 
 const PRINT_TIMEOUT: u64 = 1;
@@ -22,13 +25,12 @@ fn throughput(start: &Instant, bytes: u64) -> f64 {
     return bits / start.elapsed().as_secs_f64();
 }
 
-fn server_handle_connection(sock: &mut UnixStream) {
+fn server_handle_connection(sock: &mut UnixStream, buf_len: usize) {
+    let mut buf: Vec<u8> = Vec::with_capacity(buf_len);
     let epoll_fd = epoll::create(true).unwrap();
     let sock_fd = sock.as_raw_fd();
     let mut evset = epoll::Events::empty();
     let mut written : u64 = 0;
-    let buf_len = 64 * 1024;
-    let mut buf: Vec<u8> = Vec::with_capacity(buf_len);
 
     unsafe {buf.set_len(buf_len)};
 
@@ -114,7 +116,7 @@ fn server_handle_connection(sock: &mut UnixStream) {
               written, start.elapsed().as_secs_f64());
 }
 
-fn server(uds_path: &str) {
+fn server(uds_path: &str, buf_len: usize) {
     println!("server");
 
 
@@ -128,7 +130,7 @@ fn server(uds_path: &str) {
 
                 println!("client connected");
 
-                server_handle_connection(&mut sock);
+                server_handle_connection(&mut sock, buf_len);
 
                 println!("waiting clients...");
             }
@@ -141,7 +143,7 @@ fn server(uds_path: &str) {
 
 }
 
-fn client(uds_path: &str) {
+fn client(uds_path: &str, buf_len: usize) {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
@@ -151,7 +153,6 @@ fn client(uds_path: &str) {
 
     println!("Connecting to the server..");
 
-    let buf_len = 4 * 1024;
     let mut read : u64 = 0;
 
     let mut sock = UnixStream::connect(uds_path).unwrap();
@@ -220,15 +221,23 @@ fn main() {
                 .required(true)
                 .help("uds path"),
         )
+        .arg(
+            Arg::with_name("buf_len")
+                .long("len")
+                .short("l")
+                .default_value("4KiB")
+                .help("length of buffer to read or write"),
+        )
         .get_matches();
 
     let uds_path = cmd_args.value_of("uds_path").unwrap();
+    let buf_len = Byte::from_str(cmd_args.value_of("buf_len").unwrap()).unwrap();
 
-    println!("UDS: {}", uds_path);
+    println!("UDS: {} buf_len: {}", uds_path, buf_len);
 
     if cmd_args.is_present("server") {
-        server(uds_path);
+        server(uds_path, buf_len.get_bytes() as usize);
     } else {
-        client(uds_path);
+        client(uds_path, buf_len.get_bytes() as usize);
     }
 }

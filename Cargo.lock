@@ -27,6 +27,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 
 [[package]]
+name = "byte-unit"
+version = "3.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6894a79550807490d9f19a138a6da0f8830e70c83e83402dd23f16fd6c479056"
+
+[[package]]
 name = "cc"
 version = "1.0.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -114,6 +120,7 @@ dependencies = [
 name = "rust-epoll-test"
 version = "0.1.0"
 dependencies = [
+ "byte-unit",
  "clap",
  "ctrlc",
  "epoll",
