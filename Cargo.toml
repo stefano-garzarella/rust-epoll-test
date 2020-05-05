@@ -1,0 +1,14 @@
+[package]
+name = "rust-epoll-test"
+version = "0.1.0"
+authors = ["Stefano Garzarella <sgarzare@redhat.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2.33.0"
+epoll = ">=4.0.1"
+libc = "0.2.68"
+log = ""
+ctrlc = ""
