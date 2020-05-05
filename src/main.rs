@@ -1,21 +1,35 @@
 use clap::{Arg, App, crate_authors, crate_version};
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::io::{ErrorKind};
+use std::io::{self, ErrorKind};
 use std::io::prelude::*;
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::time::Instant;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[macro_use] extern crate log;
 
+const PRINT_TIMEOUT: u64 = 1;
+
+fn gbytes(bytes: u64) -> f64 {
+    return (bytes as f64) / 1024.0 / 1024.0 / 1024.0;
+}
+
+fn throughput(start: &Instant, bytes: u64) -> f64 {
+    let bits = (bytes as f64) / 1e9 * 8.0;
+
+    return bits / start.elapsed().as_secs_f64();
+}
+
 fn server_handle_connection(sock: &mut UnixStream) {
     let epoll_fd = epoll::create(true).unwrap();
     let sock_fd = sock.as_raw_fd();
-    let mut written : u64 = 0;
     let mut evset = epoll::Events::empty();
+    let mut written : u64 = 0;
     let buf_len = 64 * 1024;
     let mut buf: Vec<u8> = Vec::with_capacity(buf_len);
+
     unsafe {buf.set_len(buf_len)};
 
     sock.set_nonblocking(true).unwrap();
@@ -35,6 +49,9 @@ fn server_handle_connection(sock: &mut UnixStream) {
     let mut epoll_events =
         vec![epoll::Event::new(epoll::Events::empty(), 0); 32];
 
+    let start = Instant::now();
+    let mut now = Instant::now();
+
     'epoll: loop {
         match epoll::wait(epoll_fd, 0, epoll_events.as_mut_slice()) {
             Ok(ev_cnt) => {
@@ -50,7 +67,7 @@ fn server_handle_connection(sock: &mut UnixStream) {
                     if evset.contains(epoll::Events::EPOLLHUP) ||
                         evset.contains(epoll::Events::EPOLLRDHUP) ||
                         evset.contains(epoll::Events::EPOLLERR) {
-                        println!("ending");
+                        println!("\nConnection closed");
                         break 'epoll;
                     }
 
@@ -58,19 +75,30 @@ fn server_handle_connection(sock: &mut UnixStream) {
                         match sock.write(&buf) {
                             Ok(cnt) => {
                                 written += cnt as u64;
+
+                                if now.elapsed().as_secs() >= PRINT_TIMEOUT {
+
+                                    print!("\rwriting... [{:.3} GB - {:.3} s - {:.3} Gbps]",
+                                           gbytes(written),
+                                           start.elapsed().as_secs_f64(),
+                                           throughput(&start, written));
+
+                                    io::stdout().flush().unwrap();
+                                    now = Instant::now();
+                                }
                             }
                             Err(err) => {
                                 if err.kind() == ErrorKind::WouldBlock {
-                                    println!("WouldBlock");
+                                    println!("\nWouldBlock");
                                 } else {
-                                    println!("write failed: {}", err);
+                                    error!("Write failed: {}", err);
                                 }
                             }
                         };
                     }
 
                     if evset.contains(epoll::Events::EPOLLIN) {
-                        println!("EPOLLIN");
+                        println!("\nEPOLLIN");
                     }
 
                 }
@@ -82,21 +110,27 @@ fn server_handle_connection(sock: &mut UnixStream) {
         }
     }
 
-    println!("written {} bytes", written);
+    println!("Written {} bytes in {} seconds",
+              written, start.elapsed().as_secs_f64());
 }
+
 fn server(uds_path: &str) {
     println!("server");
 
 
     let listener = UnixListener::bind(uds_path).unwrap();
 
+    println!("Waiting clients...");
+
     for sock in listener.incoming() {
         match sock {
             Ok(mut sock) => {
 
-                println!("client connected...");
+                println!("client connected");
 
                 server_handle_connection(&mut sock);
+
+                println!("waiting clients...");
             }
             Err(err) => {
                 error!("connection failed: {}", err);
@@ -115,14 +149,20 @@ fn client(uds_path: &str) {
         r.store(false, Ordering::SeqCst);
     }).expect("Error setting Ctrl-C handler");
 
-    println!("client");
-    let buf_len = 1024;
+    println!("Connecting to the server..");
+
+    let buf_len = 4 * 1024;
     let mut read : u64 = 0;
 
     let mut sock = UnixStream::connect(uds_path).unwrap();
 
+    println!("Connected");
+
     let mut buf: Vec<u8> = Vec::with_capacity(buf_len);
     unsafe {buf.set_len(buf_len)};
+
+    let start = Instant::now();
+    let mut now = Instant::now();
 
     while running.load(Ordering::SeqCst) {
         match sock.read(&mut buf) {
@@ -131,15 +171,25 @@ fn client(uds_path: &str) {
                     break;
                 } else {
                     read += cnt as u64;
+                    if now.elapsed().as_secs() >= PRINT_TIMEOUT {
+                        print!("\rreading... [{:.3} GB - {:.3} s - {:.3} Gbps]",
+                               gbytes(read),
+                               start.elapsed().as_secs_f64(),
+                               throughput(&start, read));
+
+                        io::stdout().flush().unwrap();
+                        now = Instant::now();
+                    }
                 }
             }
             Err(err) => {
-                error!("read failed: {}", err);
+                error!("Read failed: {}", err);
             }
         };
     }
 
-    println!("read {} bytes", read);
+    println!("\nRead {} bytes in {} seconds",
+              read, start.elapsed().as_secs_f64());
 }
 
 
