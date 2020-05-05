@@ -143,7 +143,7 @@ fn server(uds_path: &str, buf_len: usize) {
 
 }
 
-fn client(uds_path: &str, buf_len: usize) {
+fn client(uds_path: &str, buf_len: usize, time: u64) {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
@@ -187,6 +187,10 @@ fn client(uds_path: &str, buf_len: usize) {
                 error!("Read failed: {}", err);
             }
         };
+
+        if time > 0 && start.elapsed().as_secs() >= time {
+            running.store(false, Ordering::SeqCst);
+        }
     }
 
     println!("\nRead {} bytes in {} seconds",
@@ -228,6 +232,14 @@ fn main() {
                 .default_value("4KiB")
                 .help("length of buffer to read or write"),
         )
+        .arg(
+            Arg::with_name("time")
+                .long("time")
+                .short("t")
+                .requires("client")
+                .default_value_if("client", None, "0")
+                .help("time in seconds to transmit for (0 means infinite)"),
+        )
         .get_matches();
 
     let uds_path = cmd_args.value_of("uds_path").unwrap();
@@ -238,6 +250,7 @@ fn main() {
     if cmd_args.is_present("server") {
         server(uds_path, buf_len.get_bytes() as usize);
     } else {
-        client(uds_path, buf_len.get_bytes() as usize);
+    	let time: u64 = cmd_args.value_of("time").unwrap().parse().unwrap();
+        client(uds_path, buf_len.get_bytes() as usize, time);
     }
 }
