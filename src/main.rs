@@ -63,13 +63,13 @@ fn server_handle_connection(sock: &mut UnixStream, buf_len: usize) {
                     let evset = epoll::Events::from_bits(epoll_events[i].events).unwrap();
 
                     if fd != sock_fd {
-                        error!("Wrong fd {} [expected {}]", fd, sock_fd);
+                        error!("wrong fd {} [expected {}]", fd, sock_fd);
                     }
 
                     if evset.contains(epoll::Events::EPOLLHUP) ||
                         evset.contains(epoll::Events::EPOLLRDHUP) ||
                         evset.contains(epoll::Events::EPOLLERR) {
-                        println!("\nConnection closed");
+                        println!("\nconnection closed");
                         break 'epoll;
                     }
 
@@ -93,7 +93,7 @@ fn server_handle_connection(sock: &mut UnixStream, buf_len: usize) {
                                 if err.kind() == ErrorKind::WouldBlock {
                                     println!("\nWouldBlock");
                                 } else {
-                                    error!("Write failed: {}", err);
+                                    error!("write failed: {}", err);
                                 }
                             }
                         };
@@ -112,17 +112,14 @@ fn server_handle_connection(sock: &mut UnixStream, buf_len: usize) {
         }
     }
 
-    println!("Written {} bytes in {} seconds",
+    println!("written {} bytes in {} seconds",
               written, start.elapsed().as_secs_f64());
 }
 
 fn server(uds_path: &str, buf_len: usize) {
-    println!("server");
-
-
     let listener = UnixListener::bind(uds_path).unwrap();
 
-    println!("Waiting clients...");
+    println!("waiting clients...");
 
     for sock in listener.incoming() {
         match sock {
@@ -151,13 +148,13 @@ fn client(uds_path: &str, buf_len: usize, time: u64) {
         r.store(false, Ordering::SeqCst);
     }).expect("Error setting Ctrl-C handler");
 
-    println!("Connecting to the server..");
+    println!("connecting to the server..");
 
     let mut read : u64 = 0;
 
     let mut sock = UnixStream::connect(uds_path).unwrap();
 
-    println!("Connected");
+    println!("connected");
 
     let mut buf: Vec<u8> = Vec::with_capacity(buf_len);
     unsafe {buf.set_len(buf_len)};
@@ -184,7 +181,7 @@ fn client(uds_path: &str, buf_len: usize, time: u64) {
                 }
             }
             Err(err) => {
-                error!("Read failed: {}", err);
+                error!("read failed: {}", err);
             }
         };
 
@@ -193,7 +190,7 @@ fn client(uds_path: &str, buf_len: usize, time: u64) {
         }
     }
 
-    println!("\nRead {} bytes in {} seconds",
+    println!("\nread {} bytes in {} seconds",
               read, start.elapsed().as_secs_f64());
 }
 
